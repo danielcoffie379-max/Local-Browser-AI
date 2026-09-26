@@ -6,12 +6,13 @@ const LEGACY_KEY = 'aether.preferences.v1';
 const MODES: AppMode[] = ['text', 'vision', 'audio'];
 
 export function defaultPreferences(): AppPreferencesV2 {
+  const phoneTextModel = modelsForMode('text').find((model) => model.tier === 'fast') ?? recommendedModel('text');
   return {
     version: 2,
     onboardingComplete: false,
     activeMode: 'text',
     selectedModelByMode: {
-      text: recommendedModel('text').id,
+      text: phoneTextModel.id,
       vision: recommendedModel('vision').id,
       audio: recommendedModel('audio').id
     },
