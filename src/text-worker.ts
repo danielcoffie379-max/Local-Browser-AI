@@ -40,6 +40,13 @@ async function initializeRuntime(requestId?: string): Promise<void> {
   env.allowLocalModels = false;
   env.useBrowserCache = true;
   env.useWasmCache = true;
+  // iOS Safari and many embedded browsers do not expose SharedArrayBuffer.
+  // A single-threaded WASM backend is slower but works without cross-origin isolation.
+  const wasm = env.backends.onnx.wasm;
+  if (wasm) {
+    wasm.numThreads = 1;
+    wasm.proxy = false;
+  }
   if (requestId) post({ type: 'ready', requestId, modelId: loadedModelId });
 }
 

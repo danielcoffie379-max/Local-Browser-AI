@@ -329,10 +329,10 @@ async function renderEmptyState(): Promise<void> {
   emptyState.classList.remove('hidden');
   composerDock.classList.toggle('hidden', activeMode !== 'text');
   emptySecondary.classList.add('hidden');
-  if (!capabilities.webgpu) {
+  if (!capabilities.webgpu && activeMode !== 'text') {
     emptyIcon.textContent = '!';
     emptyTitle.textContent = 'WebGPU is required';
-    emptyDescription.textContent = 'Aether’s curated LFM2.5 models need a WebGPU-capable desktop Chrome or Edge browser in a secure context.';
+    emptyDescription.textContent = 'Vision and audio models need WebGPU. Text chat remains available through the CPU/WASM runtime.';
     emptyPrimary.textContent = 'Check again';
     emptyPrimary.dataset.action = 'recheck';
     return;
@@ -546,7 +546,8 @@ async function renderModels(): Promise<void> {
     copy.querySelector('h3')!.textContent = model.name;
     copy.querySelector('p')!.textContent = model.description;
     const meta = copy.querySelector('.model-meta')!;
-    for (const value of [formatBytes(model.downloadBytes), model.license, 'WebGPU', cached ? 'Downloaded' : 'Not downloaded']) {
+    const runtime = model.mode === 'text' && !capabilities.webgpu ? 'CPU/WASM' : 'WebGPU';
+    for (const value of [formatBytes(model.downloadBytes), model.license, runtime, cached ? 'Downloaded' : 'Not downloaded']) {
       const badge = document.createElement('span'); badge.textContent = value; meta.append(badge);
     }
     const actions = document.createElement('div');
@@ -576,7 +577,7 @@ async function renderModels(): Promise<void> {
 }
 
 async function openModelPicker(): Promise<void> {
-  if (!capabilities.webgpu) return renderEmptyState();
+  if (!capabilities.webgpu && activeMode !== 'text') return renderEmptyState();
   modelModalTitle.textContent = `Choose ${activeMode} model`;
   modelModalIntro.textContent = `Only curated, pinned LFM2.5 ${activeMode} models are shown.`;
   downloadPanel.classList.add('hidden');
@@ -646,7 +647,7 @@ async function prepareModelInline(mode: AppMode): Promise<boolean> {
           await textEngine.dispose();
           textEngine = createTextEngine();
         }
-        await textEngine.initialize(model, 'webgpu', onProgress);
+        await textEngine.initialize(model, capabilities.backend, onProgress);
       } else {
         if (loadedModelByMode.vision) sessionReadyModels.delete(loadedModelByMode.vision);
         if (loadedModelByMode.audio) sessionReadyModels.delete(loadedModelByMode.audio);
@@ -720,7 +721,7 @@ async function selectAndLoadModel(model: ModelDescriptor): Promise<void> {
         await textEngine.dispose();
         textEngine = createTextEngine();
       }
-      await textEngine.initialize(model, 'webgpu', updateDownloadProgress);
+      await textEngine.initialize(model, capabilities.backend, updateDownloadProgress);
     } else {
       if (loadedModelByMode.vision) sessionReadyModels.delete(loadedModelByMode.vision);
       if (loadedModelByMode.audio) sessionReadyModels.delete(loadedModelByMode.audio);
@@ -859,7 +860,7 @@ async function generateTextWithRecovery(
   try {
     return await textEngine.generate(messages, maxNewTokens, enableThinking, onToken);
   } catch (error) {
-    if (!isRecoverableGpuError(error)) throw error;
+    if (capabilities.backend !== 'webgpu' || !isRecoverableGpuError(error)) throw error;
     onRecover();
     await textEngine.dispose().catch(() => undefined);
     textEngine = createTextEngine();
@@ -1001,7 +1002,7 @@ async function sendTextMessage(prompt: string): Promise<void> {
   } catch (generationError) {
     streaming.row.remove();
     console.error('Local text generation failed', generationError);
-    const message = isRecoverableGpuError(generationError)
+    const message = isRecoverableGpuError(generationError) && capabilities.backend === 'webgpu'
       ? 'The local GPU could not finish this response. Close GPU-heavy tabs or choose the smaller text model, then retry.'
       : generationError instanceof Error ? generationError.message : String(generationError);
     showToast(`Text generation failed: ${message}`, 'error', 8000);
